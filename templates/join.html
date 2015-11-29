@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>JOIN</title>
+	<script src="/static/js/socketio.js"></script>
+	<script src="/static/js/jq.js"></script>
+	<script src="/static/js/gyro.js"></script>
+</head>
+<body style="background: url(/static/pic/sword.jpg) no-repeat center center fixed;   -webkit-background-size: cover;
+  -moz-background-size: cover;
+  -o-background-size: cover;
+  background-size: cover;">
+</br>
+<script type="text/javascript">
+	$('document').ready(function () {
+		var room = {{ room_id }};
+		var socket = io.connect('http://' + document.domain + '/soc');
+		socket.emit("join_room", {
+			"room_id": room
+		})
+
+		var promise = new FULLTILT.getDeviceOrientation({ 'type': 'world' });
+		var promise_M = new FULLTILT.getDeviceMotion();
+
+
+		var deviceMotion;
+		promise_M.then(function(controller) {
+		    deviceMotion = controller;
+		}).catch(function(message) {
+			alert("sorry, your accelerometr not working")
+		});
+	
+
+	
+		var deviceOrientation;
+		promise.then(function(controller) {
+			deviceOrientation = controller;
+		}).catch(function(message) {
+			alert("sorry, your gyroscope not working")
+		});
+
+
+		window.addEventListener("deviceorientation", function () {
+			if (deviceOrientation) {
+			  var quaternion = deviceOrientation.getScreenAdjustedQuaternion();
+			  var acc = deviceMotion.getScreenAdjustedAcceleration();
+			  if (room != 0) {	
+					socket.emit('orientation_change', {
+						"q": quaternion,
+						"room_id": room,
+						"a": acc
+					})
+				}
+			}
+		})
+		$('*').bind('click', function () {
+			socket.emit("on_off", {
+				"room_id":room
+			});
+		})
+
+	})
+</script>
+</body>
+</html>

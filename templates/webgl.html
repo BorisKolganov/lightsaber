@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>Light Saber</title>
+	<script src="/static/js/socketio.js"></script>
+	<script src="/static/js/jq.js"></script>
+	<script src="/static/js/three.js"></script>
+	<script src="/static/js/qr.js"></script>
+</head>
+<body>
+<h3 class="header">Please, scan this QR code from your smartphone for connect</h3>
+<div id="qrcode"></div>
+<div class="web_gl">
+</div>
+
+<script type="text/javascript">
+	random_num = function (min, max) {
+		return Math.floor(Math.random() * (max - min + 1)) + min
+	}
+	fragmentShader = function () {
+		return "uniform vec3 glowColor;\
+				uniform float intensity;\
+				void main() {	\
+					gl_FragColor = vec4( glowColor * intensity, 1.0 );\
+				}"
+	}
+
+	$('document').ready(function () {
+		// connection to server and binding room
+
+		var room = random_num(1, 1000000);
+		var socket = io.connect('http://' + document.domain +'/soc');
+		socket.emit("room_create", {
+			"room_id": room
+		})
+		var qr = new QRCode(document.getElementById("qrcode"), "http://"+document.domain+'/'+room);
+
+		// add audio files
+
+		var audio_on = new Audio('/static/sounds/on.wav');
+	    var audio_off = new Audio('/static/sounds/off.wav');
+	    var audio = []
+	    audio[0] = new Audio('/static/sounds/sw0.wav')
+		audio[1] = new Audio('/static/sounds/sw1.wav');
+		audio[2] = new Audio('/static/sounds/sw2.wav');
+		audio[3] = new Audio('/static/sounds/sw3.wav');
+		audio[4] = new Audio('/static/sounds/sw4.wav');
+		audio[5] = new Audio('/static/sounds/sw5.wav');
+		audio[6] = new Audio('/static/sounds/sw6.wav');
+
+
+		// three js init
+
+		var scene = new THREE.Scene();
+	    var camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight , 0.1, 1000);
+	    var renderer = new THREE.WebGLRenderer({ antialias: true });
+
+
+		camera.position.x = 500;
+		camera.up = new THREE.Vector3( 0, 0, 1 );
+    	camera.lookAt(scene.position);
+
+    	// light init
+
+		// var ambientLight = new THREE.AmbientLight( 0x000000 );
+		// scene.add( ambientLight );
+
+		var lights = [];
+		lights[0] = new THREE.PointLight( 0xffffff, 1, 0 );
+		lights[1] = new THREE.PointLight( 0xffffff, 1, 0 );
+		lights[2] = new THREE.PointLight( 0xffffff, 1, 0 );
+		
+		lights[0].position.set( 0, 200, 0 );
+		lights[1].position.set( 100, 200, 100 );
+		lights[2].position.set( -100, -200, -100 );
+
+		scene.add( lights[0] );
+		scene.add( lights[1] );
+		scene.add( lights[2] );
+	 	
+		//renderer init
+
+	    $(".web_gl").append(renderer.domElement);
+	    $(".web_gl").hide();
+
+	    renderer.setClearColor(0x000000);
+	    renderer.setSize(window.innerWidth, window.innerHeight);
+
+	    //sword init
+
+	    var parent = new THREE.Object3D();
+		scene.add( parent );
+
+		var pivot1 = new THREE.Object3D();
+		var pivot2 = new THREE.Object3D();
+
+		parent.add( pivot1 );
+		parent.add( pivot2 );
+		
+		// blade init
+
+		var pivot1_geometry = new THREE.CylinderGeometry(5, 5, 200, 32);
+		pivot1_geometry.applyMatrix(new THREE.Matrix4().makeTranslation(0, 100, 0));
+		var pivot1_material = new THREE.MeshBasicMaterial( {color: 0xffffff} );
+		var pivot1_mesh = new THREE.Mesh( pivot1_geometry, pivot1_material );
+		pivot1.add(pivot1_mesh)
+	
+		// blade glow init
+		var glow_geometry = new THREE.CylinderGeometry(7, 7, 202, 32);
+		glow_geometry.applyMatrix(new THREE.Matrix4().makeTranslation(0, 101, 0));
+		var glow_material = new THREE.ShaderMaterial({
+		    uniforms: 
+			{ 
+				glowColor: { type: "c", value: new THREE.Color(0x55ccff) },
+				intensity: { type: "f", value: 0.9 }
+			},
+			fragmentShader: fragmentShader(),
+			side: THREE.FrontSide,
+			blending: THREE.AdditiveBlending,
+			transparent: true
+		} );
+		
+		var glow = new THREE.Mesh(glow_geometry, glow_material);
+	    pivot1.add( glow );
+
+	    // handle init
+
+		var pivot2_geometry = new THREE.CylinderGeometry(5,5,50,32);
+		pivot2_geometry.applyMatrix(new THREE.Matrix4().makeTranslation(0, -25, 0));
+		var pivot2_material = new THREE.MeshLambertMaterial( {color: 0xcccccc} );
+		var pivot2_mesh = new THREE.Mesh( pivot2_geometry, pivot2_material );
+		
+		pivot2.add(pivot2_mesh);
+
+		// variables for animate
+		var x, y, z, w;
+		var isCanPlay = true;
+		var show = false;
+		var scale = 0.0000001;
+		var anim = 'no';
+		socket.on('position_change', function (arg) {
+			x = arg.q.x;
+			y = arg.q.y;
+			z = arg.q.z;
+			w = arg.q.w;
+			if ((arg.a.x > 1.2 ||
+				 arg.a.y > 1.2 ||
+				 arg.a.z > 1.2) && 
+				 isCanPlay && 
+				 show) {
+				isCanPlay = false;
+				var i = random_num(0, 6)
+				audio[i].addEventListener('ended', function (){
+					isCanPlay = true;
+				})
+				audio[i].play();
+
+			}
+		})
+		socket.on('sword_off_on', function () {
+			if (show) {
+				anim = 'hide';
+				audio_on.play();
+			} else {
+				anim = 'show';
+				audio_off.play();
+			}
+			show = !show;
+		});
+
+
+
+		socket.on('joined', function(arg) {
+			$(".web_gl").show();
+			$("#qrcode").hide();
+			$(".header").hide();
+		})
+
+
+
+		var animate = function () {
+			var quaternion = new THREE.Quaternion(x, y, z, w);
+			parent.setRotationFromQuaternion(quaternion);
+			if (anim === 'hide') {
+				scale -= 0.04;
+				if (scale <= 0) {
+					scale = 0.0000001;
+					anim = 'no';
+				}
+			}
+			if (anim === 'show') {
+				scale += 0.1;
+				if (scale >= 1) {
+					scale = 1;
+					anim = 'no';
+				}
+			}
+			pivot1.scale.set(1, scale, 1);
+	    	renderer.render(scene, camera);
+	    	requestAnimationFrame(animate);
+		};
+		animate();
+	})
+</script>
+
+</body>
+</html>
